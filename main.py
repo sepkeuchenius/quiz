@@ -11,14 +11,21 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
-from fastui.events import GoToEvent, BackEvent
+from fastui.events import GoToEvent, BackEvent, AuthEvent
+from fastapi import APIRouter, Depends, Request
+from fastui.forms import fastui_form
+from typing import Annotated, Literal, TypeAlias
 from pydantic import BaseModel, Field
+from fastui.auth.shared import fastapi_auth_exception_handling
+
+from auth_user import User
 
 import uvicorn
 import questions
 
 
 app = FastAPI()
+fastapi_auth_exception_handling(app)
 
 def page(*components: AnyComponent, title: str | None = None) -> list[AnyComponent]:
     return [
@@ -44,30 +51,52 @@ def page(*components: AnyComponent, title: str | None = None) -> list[AnyCompone
 router = APIRouter()
 import models
 @app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
-def index() -> list[AnyComponent]:
+def index(user: Annotated[User, Depends(User.from_request)]) -> list[AnyComponent]:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
-    return page(c.ModelForm(model=models.User, submit_url='/question/0', method='GOTO'), title="Reunie Quiz - Home")
+    return page(
+        c.Heading(text=f"Alright {user.name}. Let's go!", level=3), 
+        c.Button(text='Start!', on_click=GoToEvent(url='/question/0')),
+        title="Reunie Quiz")
 
-@app.get("/api/start", response_model=FastUI, response_model_exclude_none=True)
-def quiz(name: str) -> list[AnyComponent]:
+
+
+@app.get("/api/answer/{index}", response_model=FastUI, response_model_exclude_none=True)
+def quiz(answer: str, index: str, user: Annotated[User, Depends(User.from_request)]) -> list[AnyComponent]:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
-    return page(c.Heading(text=f'Alright {name}. Lets go!'), c.ModelForm(model=models.QuestionForm, submit_url=f"/next/{0}", method="GOTO"), title='Quiz')
-
+    if user.answers: 
+        user.answers[index] = (answer)
+    else:
+        user.answers = {index:answer}
+    token = user.encode_token()
+    return [c.FireEvent(event=AuthEvent(token=token, url=f'/question/{index}'))]    
 
 @app.get("/api/question/{index}", response_model=FastUI, response_model_exclude_none=True)
-def quiz(answer: str, index: str) -> list[AnyComponent]:
+def quiz(index: str, user: Annotated[User, Depends(User.from_request)]) -> list[AnyComponent]:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
-    q=questions.get_question(int(index), answer)
+    q=questions.get_question(int(index))
     if q is not None:
-        return page(*q, c.ModelForm(model=models.QuestionForm, submit_url=f"/question/{int(index)+1}", method='GOTO'), title='Quiz')
+        return page(*q, c.ModelForm(model=models.QuestionForm, submit_url=f"/answer/{int(index)+1}", method='GOTO'), title='Quiz')
     else:
         return page(c.Text(text="Dat was m alweer!"), title='Quiz Klaar!')
+
+
+@app.get("/api/login", response_model=FastUI, response_model_exclude_none=True)
+def login():
+    return page(
+        c.ModelForm(model=models.LoginForm, submit_url='/api/auth/login', display_mode='page')
+    )
+
+@app.post("/api/auth/login")
+async def login_form_post(form: Annotated[models.LoginForm, fastui_form(models.LoginForm)]) -> list[AnyComponent]:
+    user = User(name=form.name, extra={})
+    token = user.encode_token()
+    return [c.FireEvent(event=AuthEvent(token=token, url='/'))]
 
 
 

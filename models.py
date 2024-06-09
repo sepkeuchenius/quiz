@@ -25,3 +25,6 @@ class Question(BaseModel):
     media: list[c.Image] | None = Field([])
     options: list[Option] 
 
+
+class LoginForm(BaseModel):
+    name: str = Field(description="Niet liegen", alias="Wat is je naam?")
