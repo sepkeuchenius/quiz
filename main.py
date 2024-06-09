@@ -68,22 +68,32 @@ def quiz(answer: str, index: str, user: Annotated[User, Depends(User.from_reques
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
     if user.answers: 
-        user.answers[index] = (answer)
+        user.answers[str(index)] = answer
     else:
-        user.answers = {index:answer}
+        user.answers = {str(index): answer}
     token = user.encode_token()
-    return [c.FireEvent(event=AuthEvent(token=token, url=f'/question/{index}'))]    
+    return [c.FireEvent(event=AuthEvent(token=token, url=f'/question/{int(index) + 1}'))]    
 
 @app.get("/api/question/{index}", response_model=FastUI, response_model_exclude_none=True)
 def quiz(index: str, user: Annotated[User, Depends(User.from_request)]) -> list[AnyComponent]:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
-    q=questions.get_question(int(index))
+    q = questions.get_question(int(index))
     if q is not None:
-        return page(*q, c.ModelForm(model=models.QuestionForm, submit_url=f"/answer/{int(index)+1}", method='GOTO'), title='Quiz')
+        return page(*q, c.ModelForm(model=models.QuestionForm, submit_url=f"/answer/{int(index)}", method='GOTO'), title='Quiz')
     else:
-        return page(c.Text(text="Dat was m alweer!"), title='Quiz Klaar!')
+        return [c.FireEvent(event=GoToEvent(url='/score'))]
+
+
+@app.get("/api/score", response_model=FastUI, response_model_exclude_none=True)
+async def score(user: Annotated[User, Depends(User.from_request)]):
+    from questions import QUESTIONS
+    score = 0
+    for index, question in enumerate(QUESTIONS):
+        if question.answer.value == user.answers[str(index)]:
+            score += 1000
+    return page(c.Heading(text=f'Jouw score is {score}, {user.name}!', level=3), c.Text(text="Laat dit aan de organisatie zien!"), title="Score")
 
 
 @app.get("/api/login", response_model=FastUI, response_model_exclude_none=True)
