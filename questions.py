@@ -3,8 +3,7 @@ from models import Question, Option, Answer
 
 
 def render_question(question: Question):
-    return [
-        c.Paragraph(text=question.text),
+    return question.text, [
         *[c.Image(media) for media in question.media],
         *[c.Paragraph(text=f"{option.value.value}: {option.text}") for option in question.options]
     ]

@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastui import FastUI, AnyComponent, prebuilt_html, components as c
 from fastui.components.display import DisplayMode, DisplayLookup
+from questions import QUESTIONS
 from fastui.events import GoToEvent, BackEvent, AuthEvent
 from fastapi import APIRouter, Depends, Request
 from fastui.forms import fastui_form
@@ -79,16 +80,23 @@ def quiz(index: str, user: Annotated[User, Depends(User.from_request)]) -> list[
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """ 
-    q = questions.get_question(int(index))
-    if q is not None:
-        return page(*q, c.ModelForm(model=models.QuestionForm, submit_url=f"/answer/{int(index)}", method='GOTO'), title='Quiz')
-    else:
+    if int(index) < 0:
+        return [c.FireEvent(event=GoToEvent(url='/'))]
+    elif int(index) >= len(QUESTIONS):
         return [c.FireEvent(event=GoToEvent(url='/score'))]
+    else:
+        title, q = questions.get_question(int(index))
+        return page(
+            *q,
+            c.ModelForm(model=models.QuestionForm, submit_url=f"/answer/{int(index)}", method='GOTO'),
+            c.Button(text="Vorige", on_click=GoToEvent(url=f"/question/{int(index)-1}"), class_name='btn btn-secondary btn-light mt-3'), 
+            title=title
+
+        )
 
 
 @app.get("/api/score", response_model=FastUI, response_model_exclude_none=True)
 async def score(user: Annotated[User, Depends(User.from_request)]):
-    from questions import QUESTIONS
     score = 0
     for index, question in enumerate(QUESTIONS):
         if question.answer.value == user.answers[str(index)]:
